@@ -9,8 +9,7 @@
         Name: BIG HOUSE RED,
         Type: ALE, ENGLIS,
         Style: IRISH RED,
-        Alcohol: 5.0,
-        BrewerId: 692,
+        Alcohol: 5.0,        BrewerId: 692,
         Cafes: [
           {}
         ]

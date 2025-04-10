@@ -300,7 +300,40 @@ public class Assignments3
     // Als je dit namelijk verkeerd doet, kan dit grote gevolgen hebben voor je resultaat (je krijgt dan misschien een verkeerde aantal records).
     public static List<Cafe> OverzichtBierenPerKroegLijstMultiMapper()
     {
-        throw new NotImplementedException();
+        string sql = @"SELECT c.CafeId, c.Name, c.Address, c.City,
+                          '' split1,
+                          b.BeerId, b.Name, b.Type, b.Style, b.Alcohol, b.BrewerId
+                   FROM dapperbeer.Cafe c
+                   LEFT JOIN dapperbeer.Sells s ON c.CafeId = s.CafeId
+                   LEFT JOIN dapperbeer.Beer b ON s.BeerId = b.BeerId
+                   ORDER BY c.Name, b.Name";
+
+        using IDbConnection connection = DbHelper.GetConnection();
+
+        var cafeDict = new Dictionary<int, Cafe>();
+
+        var cafes = connection.Query<Cafe, Beer, Cafe>(
+            sql,
+            (cafe, beer) =>
+            {
+                if (!cafeDict.TryGetValue(cafe.CafeId, out var existingCafe))
+                {
+                    existingCafe = cafe;
+                    existingCafe.Beers = new List<Beer>();
+                    cafeDict.Add(existingCafe.CafeId, existingCafe);
+                }
+
+                if (beer != null && beer.BeerId != 0 && !existingCafe.Beers.Any(b => b.BeerId == beer.BeerId))
+                {
+                    existingCafe.Beers.Add(beer);
+                }
+
+                return existingCafe;
+            },
+            splitOn: "split1"
+        ).Distinct().ToList();
+
+        return cafes;
     }
 
 
@@ -313,92 +346,54 @@ public class Assignments3
     // Gebruik de methode Query<Brewer, Beer, Cafe, Brewer>(...) met daarin de juiste JOIN's in de query en splitOn parameter.
     // Je zult twee dictionaries moeten gebruiken. Een voor de brouwerijen en een voor de bieren.
     public static List<Brewer> GetAllBrewersIncludeBeersThenIncludeCafes()
-{
-    string sql = """
-                 SELECT 
-                     br.BrewerId,
-                     br.Name,
-                     br.Country,
-                     '' AS BrewerSplit,
-                     b.BeerId,
-                     b.Name,
-                     b.Type,
-                     b.Style,
-                     b.Alcohol AS AlcoholPercentage,
-                     b.BrewerId AS BeerBrewerId,
-                     '' AS BeerSplit,
-                     c.CafeId,
-                     c.Name,
-                     c.Address,
-                     c.City
-                 FROM Brewer br
-                     LEFT JOIN Beer b ON br.BrewerId = b.BrewerId
-                     LEFT JOIN Sells s ON b.BeerId = s.BeerId
-                     LEFT JOIN Cafe c ON s.CafeId = c.CafeId
-                 ORDER BY br.Name, b.Name, c.Name
-                 """;
+    {
+        string sql = @"SELECT Brewer.BrewerId, brewer.Name, brewer.Country, 
+       '' split1, beer.BeerId, beer.name, beer.type, beer.style, beer.Alcohol, beer.BrewerId, 
+       '' split2, cafe.CafeId, cafe.Name, cafe.Address, cafe.City 
+FROM dapperbeer.Brewer 
+LEFT JOIN dapperbeer.Beer ON brewer.BrewerId = beer.BrewerId
+LEFT JOIN dapperbeer.Sells ON beer.BeerId = sells.BeerId
+LEFT JOIN dapperbeer.Cafe ON sells.CafeId = cafe.CafeId
+ORDER BY brewer.Name, beer.Name, cafe.Name";
 
-    using var connection = DbHelper.GetConnection();
+        using IDbConnection connection = DbHelper.GetConnection();
 
-    // Dictionaries voor duplicaatcontrole
-    var brewerDict = new Dictionary<int, Brewer>();
-    var beerDict = new Dictionary<int, Beer>();
+        var brewerDict = new Dictionary<int, Brewer>();
 
-    return connection.Query<Brewer, Beer, Cafe, Brewer>(
-        sql,
-        map: (brewer, beer, cafe) =>
-        {
-            // Controleer of Brewer al bestaat, anders aanmaken
-            if (!brewerDict.TryGetValue(brewer.BrewerId, out var existingBrewer))
+        var brewers = connection.Query<Brewer, Beer, Cafe, Brewer>(
+            sql,
+            (brewer, beer, cafe) =>
             {
-                existingBrewer = new Brewer
+                if (!brewerDict.TryGetValue(brewer.BrewerId, out var brewerEntry))
                 {
-                    BrewerId = brewer.BrewerId,
-                    Name = brewer.Name,
-                    Country = brewer.Country,
-                    Beers = new List<Beer>()
-                };
-                brewerDict.Add(brewer.BrewerId, existingBrewer);
-            }
-
-            // Controleer of Beer bestaat, anders aanmaken
-            if (beer != null && !beerDict.TryGetValue(beer.BeerId, out var existingBeer))
-            {
-                existingBeer = new Beer
-                {
-                    BeerId = beer.BeerId,
-                    Name = beer.Name,
-                    Type = beer.Type,
-                    Style = beer.Style,
-                    Alcohol = beer.Alcohol,
-                    BrewerId = beer.BrewerId,
-                    Cafes = new List<Cafe>()
-                };
-                beerDict.Add(beer.BeerId, existingBeer);
-                existingBrewer.Beers.Add(existingBeer);
-            }
-
-            // Voeg Café toe aan bestaande bier (indien café beschikbaar is en er een bier bestaat)
-            if (beer != null && cafe != null)
-            {
-                var beerToUpdate = beerDict[beer.BeerId];
-                if (!beerToUpdate.Cafes.Any(c => c.CafeId == cafe.CafeId)) // Vermijd dubbele cafés
-                {
-                    beerToUpdate.Cafes.Add(new Cafe
-                    {
-                        CafeId = cafe.CafeId,
-                        Name = cafe.Name,
-                        Address = cafe.Address,
-                        City = cafe.City
-                    });
+                    brewerEntry = brewer;
+                    brewerEntry.Beers = new List<Beer>();
+                    brewerDict.Add(brewer.BrewerId, brewerEntry);
                 }
-            }
 
-            return existingBrewer;
-        },
-        splitOn: "BrewerSplit,BeerSplit"
-    ).Distinct().ToList();
-}
+                if (beer != null && beer.BeerId != 0)
+                {
+                    var existingBeer = brewerEntry.Beers.FirstOrDefault(b => b.BeerId == beer.BeerId);
+                    if (existingBeer == null)
+                    {
+                        existingBeer = beer;
+                        existingBeer.Cafes = new List<Cafe>();
+                        brewerEntry.Beers.Add(existingBeer);
+                    }
+
+                    if (cafe != null && cafe.CafeId != 0 && !existingBeer.Cafes.Any(c => c.CafeId == cafe.CafeId))
+                    {
+                        existingBeer.Cafes.Add(cafe);
+                    }
+                }
+
+                return brewerEntry;
+            },
+            splitOn: "split1,split2"
+        ).Distinct().ToList();
+
+        return brewers;
+    }
 
 
     

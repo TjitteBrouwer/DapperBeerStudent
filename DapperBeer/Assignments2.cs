@@ -150,7 +150,7 @@ public class Assignments2
         public int PageSize { get; set; } = 10;    //default value start at 0
         public int PageIndex { get; set; } = 0;    //default value start at 0
         
-        public int Offset => PageSize * (PageIndex+1);
+        public int Offset => PageSize * (PageIndex);
         
         public string OrderBy { get; set; } = "beer.Name";
     }
